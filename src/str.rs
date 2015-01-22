@@ -13,7 +13,7 @@ impl StringTools for String {
             let s2 = f(&**self);
             ptr2 = s2.as_ptr();
             len2 = s2.len();
-            // Make sure `s2` is within `s`
+            // Make sure `s2` is within `self`
             self.subslice_offset(s2);
         }
         let vec = unsafe { self.as_mut_vec() };
