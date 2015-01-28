@@ -1,6 +1,7 @@
 use std::mem;
 use std::num::Int;
 use std::iter::Peekable;
+use arena::TypedArena;
 
 // Infinite <3s to Luqman for most of this impl
 pub struct Utf8Iter<I> where I: Iterator<Item = u8> {
@@ -92,6 +93,9 @@ pub trait IterTools: Sized {
 
     fn group<F, G>(self, f: F) -> Groups<Self, F, G>
         where Self: Iterator, F: FnMut(&<Self as Iterator>::Item) -> G, G: PartialEq;
+
+    fn refs(self) -> RefIter<Self>
+        where Self: Iterator;
 }
 
 impl<T> IterTools for T {
@@ -108,12 +112,29 @@ impl<T> IterTools for T {
             done: true,
         }
     }
+
+    fn refs(self) -> RefIter<Self>
+            where Self: Iterator {
+        RefIter {
+            iter: self,
+            arena: TypedArena::new(),
+        }
+    }
 }
 
 pub trait StreamingIterator<'a> {
     type Item;
 
-    fn next(&'a mut self) -> Option<Self::Item>;
+    fn next_streaming(&'a mut self) -> Option<Self::Item>;
+}
+
+impl<'a, I> StreamingIterator<'a> for I
+        where I: Iterator {
+    type Item = <Self as Iterator>::Item;
+
+    fn next_streaming(&'a mut self) -> Option<<Self as Iterator>::Item> {
+        self.next()
+    }
 }
 
 pub struct Groups<I, F, G>
@@ -127,7 +148,7 @@ impl<'a, I, F, G> StreamingIterator<'a> for Groups<I, F, G>
         where I: Iterator, F: FnMut(&<I as Iterator>::Item) -> G, G: PartialEq {
     type Item = (G, Group<'a, I, F, G>);
 
-    fn next(&'a mut self) -> Option<(G, Group<'a, I, F, G>)> {
+    fn next_streaming(&'a mut self) -> Option<(G, Group<'a, I, F, G>)> {
         let (mut g, mut g2);
         {
             {
@@ -190,6 +211,26 @@ impl<'a, I, F, G> Iterator for Group<'a, I, F, G>
     }
 }
 
+pub struct RefIter<I>
+        where I: Iterator {
+    iter: I,
+    arena: TypedArena<<I as Iterator>::Item>,
+}
+
+impl<'a, I> StreamingIterator<'a> for RefIter<I>
+        where I: Iterator {
+    type Item = &'a <I as Iterator>::Item;
+
+    fn next_streaming(&'a mut self) -> Option<&'a <I as Iterator>::Item> {
+        let a;
+        match self.iter.next() {
+            None => return None,
+            Some(x) => a = x,
+        }
+        Some(self.arena.alloc(a))
+    }
+}
+
 #[test]
 fn utf8_chars() {
     // Single byte (ASCII): Latin Capital Letter B
@@ -210,4 +251,18 @@ fn utf8_chars() {
             .collect::<Vec<_>>(),
         vec![Some('B'), Some('ɣ'), Some('☃'), Some('𠜱'), None, Some('A')]
     );
+}
+
+#[test]
+fn refs() {
+    // Check lifetime stuff
+    let mut iter = {
+        let iter = 0i32..5;
+        iter.refs()
+    };
+    let mut i = 0;
+    while let Some(v) = iter.next_streaming() {
+        assert_eq!(&i, v);
+        i += 1;
+    }
 }
