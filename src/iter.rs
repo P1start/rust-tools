@@ -13,7 +13,6 @@ impl<I> Iterator for Utf8Iter<I>
 
     type Item = Option<char>;
 
-    #[allow(unstable)]
     fn next(&mut self) -> Option<Option<char>> {
         // Our mask to get the actual values
         // from continuation bytes

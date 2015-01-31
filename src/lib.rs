@@ -1,4 +1,4 @@
-#![allow(unstable)]
+#![feature(core, rustc_private, collections)]
 
 extern crate arena;
 
