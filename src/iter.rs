@@ -5,7 +5,7 @@ use arena::TypedArena;
 
 // Infinite <3s to Luqman for most of this impl
 pub struct Utf8Iter<I> where I: Iterator<Item = u8> {
-    buf: Peekable<u8, I>,
+    buf: Peekable<I>,
 }
 
 impl<I> Iterator for Utf8Iter<I>
@@ -95,6 +95,9 @@ pub trait IterTools: Sized {
 
     fn refs(self) -> RefIter<Self>
         where Self: Iterator;
+
+    fn dedup(self) -> DedupIter<Self>
+        where Self: Iterator, <Self as Iterator>::Item: PartialEq;
 }
 
 impl<T> IterTools for T {
@@ -119,6 +122,13 @@ impl<T> IterTools for T {
             arena: TypedArena::new(),
         }
     }
+
+    fn dedup(self) -> DedupIter<Self>
+            where Self: Iterator, <Self as Iterator>::Item: PartialEq {
+        DedupIter {
+            iter: self.peekable(),
+        }
+    }
 }
 
 pub trait StreamingIterator<'a> {
@@ -138,7 +148,7 @@ impl<'a, I> StreamingIterator<'a> for I
 
 pub struct Groups<I, F, G>
         where I: Iterator, F: FnMut(&<I as Iterator>::Item) -> G, G: PartialEq {
-    iter: Peekable<<I as Iterator>::Item, I>,
+    iter: Peekable<I>,
     f: F,
     done: bool,
 }
@@ -230,6 +240,25 @@ impl<'a, I> StreamingIterator<'a> for RefIter<I>
     }
 }
 
+pub struct DedupIter<I>
+        where I: Iterator, <I as Iterator>::Item: PartialEq {
+    iter: Peekable<I>,
+}
+
+impl<I> Iterator for DedupIter<I>
+        where I: Iterator, <I as Iterator>::Item: PartialEq {
+    type Item = <I as Iterator>::Item;
+
+    fn next(&mut self) -> Option<<I as Iterator>::Item> {
+        let n = self.iter.next();
+        if let None = n { return None; }
+        while self.iter.peek() == n.as_ref() {
+            self.iter.next();
+        }
+        n
+    }
+}
+
 #[test]
 fn utf8_chars() {
     // Single byte (ASCII): Latin Capital Letter B
@@ -264,4 +293,13 @@ fn refs() {
         assert_eq!(&i, v);
         i += 1;
     }
+}
+
+#[test]
+fn dedup() {
+    use std::vec::Vec;
+    let mut v = vec![1, 1, 2, 3, 3, 4, 3, 3, 3, 3, 4, 4, 5, 6];
+    Vec::dedup(&mut v);
+    let v2 = v.clone().into_iter().dedup().collect();
+    assert_eq!(v, v2);
 }
