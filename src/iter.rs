@@ -101,11 +101,13 @@ pub trait IterTools: Sized {
 }
 
 impl<T> IterTools for T {
+    #[inline(always)]
     fn utf8_iter(self) -> Utf8Iter<Self>
             where Self: Iterator<Item=u8> {
         Utf8Iter { buf: self.peekable() }
     }
 
+    #[inline(always)]
     fn group<F, G>(self, f: F) -> Groups<Self, F, G>
             where Self: Iterator, F: FnMut(&<Self as Iterator>::Item) -> G, G: PartialEq {
         Groups {
@@ -115,6 +117,7 @@ impl<T> IterTools for T {
         }
     }
 
+    #[inline(always)]
     fn refs(self) -> RefIter<Self>
             where Self: Iterator {
         RefIter {
@@ -123,6 +126,7 @@ impl<T> IterTools for T {
         }
     }
 
+    #[inline(always)]
     fn dedup(self) -> DedupIter<Self>
             where Self: Iterator, <Self as Iterator>::Item: PartialEq {
         DedupIter {
@@ -228,9 +232,10 @@ pub struct RefIter<I>
 
 impl<'a, I> StreamingIterator<'a> for RefIter<I>
         where I: Iterator {
-    type Item = &'a <I as Iterator>::Item;
+    type Item = &'a mut <I as Iterator>::Item;
 
-    fn next_streaming(&'a mut self) -> Option<&'a <I as Iterator>::Item> {
+    #[inline]
+    fn next_streaming(&'a mut self) -> Option<&'a mut <I as Iterator>::Item> {
         let a;
         match self.iter.next() {
             None => return None,
@@ -249,6 +254,7 @@ impl<I> Iterator for DedupIter<I>
         where I: Iterator, <I as Iterator>::Item: PartialEq {
     type Item = <I as Iterator>::Item;
 
+    #[inline]
     fn next(&mut self) -> Option<<I as Iterator>::Item> {
         let n = self.iter.next();
         if let None = n { return None; }
@@ -290,7 +296,7 @@ fn refs() {
     };
     let mut i = 0;
     while let Some(v) = iter.next_streaming() {
-        assert_eq!(&i, v);
+        assert_eq!(&mut i, v);
         i += 1;
     }
 }
