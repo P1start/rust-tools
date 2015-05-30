@@ -18,7 +18,7 @@ impl StringTools for String {
         }
         let vec = unsafe { self.as_mut_vec() };
         unsafe {
-            intrinsics::copy_memory(vec.as_mut_ptr(), ptr2, len2);
+            intrinsics::copy(ptr2, vec.as_mut_ptr(), len2);
             vec.set_len(len2);
         }
     }

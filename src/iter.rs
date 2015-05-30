@@ -1,5 +1,4 @@
 use std::mem;
-use std::num::Int;
 use std::iter::Peekable;
 use arena::TypedArena;
 
@@ -196,13 +195,13 @@ impl<'a, I, F, G> StreamingIterator<'a> for Groups<I, F, G>
 }
 
 pub struct Group<'a, I: 'a, F: 'a, G>
-        where I: Iterator, F: FnMut(&<I as Iterator>::Item) -> G, G: PartialEq {
+        where I: Iterator, F: FnMut(&<I as Iterator>::Item) -> G, G: PartialEq, I::Item: 'a {
     sup: &'a mut Groups<I, F, G>,
     g: G,
 }
 
 impl<'a, I, F, G> Iterator for Group<'a, I, F, G>
-        where I: Iterator, F: FnMut(&<I as Iterator>::Item) -> G, G: PartialEq {
+        where I: Iterator, F: FnMut(&<I as Iterator>::Item) -> G, G: PartialEq, I::Item: 'a {
     type Item = <I as Iterator>::Item;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
@@ -306,6 +305,6 @@ fn dedup() {
     use std::vec::Vec;
     let mut v = vec![1, 1, 2, 3, 3, 4, 3, 3, 3, 3, 4, 4, 5, 6];
     Vec::dedup(&mut v);
-    let v2 = v.clone().into_iter().dedup().collect();
+    let v2: Vec<i32> = v.clone().into_iter().dedup().collect();
     assert_eq!(v, v2);
 }
