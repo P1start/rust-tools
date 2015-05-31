@@ -4,14 +4,46 @@ pub trait VecTools<T> {
     fn in_place<F>(&mut self, f: F)
             where F: FnOnce(&[T]) -> &[T];
 }
+
 pub trait SliceTools<T> {
-    /// Promote a vector of slices into `self` into a vector of mutable slices into `self`.
+    /// Promotes a tuple of non-overlapping slices into `self` into a tuple of mutable slices into
+    /// `self`.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// Panics if the slices returned by `f` intersect each other at all.
     fn promote<F>(&mut self, f: F) -> (&mut [T], &mut [T])
             where F: FnOnce(&[T]) -> (&[T], &[T]);
+
+    /// Removes an element from the slice and return it and the remaining section of the slice,
+    /// swapping the removed element with the first in the slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    fn swap_remove(&mut self, index: usize) -> (&mut T, &mut [T]);
+
+    /// Returns a streaming iterator over mutable references to the items of `self` and the ‘rests’
+    /// of the slice (using `swap_remove` to separate the items from the rests).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use tools::slice::SliceTools;
+    /// # use tools::iter::StreamingIterator;
+    ///
+    /// let mut a = [0, 1, 2, 3];
+    /// let mut it = a.remove_iter();
+    /// while let Some((item, rest)) = it.next_streaming() {
+    ///     println!("{}, {:?}", item, rest);
+    /// }
+    /// // Prints:
+    /// // 0, [3, 1, 2]
+    /// // 1, [0, 3, 2]
+    /// // 2, [0, 1, 3]
+    /// // 3, [0, 1, 2]
+    /// ```
+    fn remove_iter(&mut self) -> RemoveIter<T>;
 }
 
 fn subslice_offset<T>(slf: &[T], inner: &[T]) -> usize {
@@ -55,6 +87,42 @@ impl<T> SliceTools<T> for [T] {
             mem::transmute((a, b))
         }
     }
+
+    fn swap_remove(&mut self, idx: usize) -> (&mut T, &mut [T]) {
+        let len = self.len();
+        assert!(len > 0, "SliceTools::swap_remove called on slice of length 0");
+        self.swap(len - 1, idx);
+        let (rest, last) = self.split_at_mut(len - 1);
+        let last = &mut last[0];
+        (last, rest)
+    }
+
+    fn remove_iter(&mut self) -> RemoveIter<T> {
+        RemoveIter {
+            slice: self,
+            idx: 0,
+        }
+    }
+}
+
+pub struct RemoveIter<'a, T: 'a> {
+    slice: &'a mut [T],
+    idx: usize,
+}
+
+impl<'a, 'b, T> ::iter::StreamingIterator<'a> for RemoveIter<'b, T> {
+    type Item = (&'a mut T, &'a mut [T]);
+
+    fn next_streaming(&'a mut self) -> Option<(&'a mut T, &'a mut [T])> {
+        let len = self.slice.len();
+        if self.idx > 0 {
+            // Undo the swap_remove from the previous iteration
+            self.slice.swap(self.idx - 1, len - 1);
+        }
+        self.idx += 1;
+        if self.idx > len { return None }
+        Some(self.slice.swap_remove(self.idx - 1))
+    }
 }
 
 #[test]
@@ -75,4 +143,32 @@ fn test_promote() {
     });
     assert_eq!(a, [0, 1, 2]);
     assert_eq!(b, [3, 4, 5, 6, 7]);
+}
+
+#[test]
+fn test_swap_remove() {
+    let mut a = [0, 1, 2, 3, 4, 5];
+    let (two, rest) = a.swap_remove(2);
+    assert_eq!(*two, 2);
+    assert_eq!(rest, [0, 1, 5, 3, 4]);
+}
+
+#[test]
+fn test_rest_iter() {
+    use ::iter::StreamingIterator;
+
+    let mut a = [0, 1, 2, 3];
+    {
+        let mut it = a.remove_iter();
+        while let Some((i, rest)) = it.next_streaming() {
+            assert_eq!(rest, match *i {
+                0 => [3, 1, 2],
+                1 => [0, 3, 2],
+                2 => [0, 1, 3],
+                3 => [0, 1, 2],
+                _ => unreachable!(),
+            });
+        }
+    }
+    assert_eq!(a, [0, 1, 2, 3]);
 }
